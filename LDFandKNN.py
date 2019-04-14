@@ -82,7 +82,13 @@ variables_dict = {
     , 'majority_type' : 0
     , 'classification' : 'UNK'
     , 'ignore_columns' : ['cigs', 'years', 'num']
-    , 'confusion_matrix' : {
+    , 'knn_confusion_matrix' : {
+        'TN'    : 0
+        , 'FP'  : 0
+        , 'FN'  : 0
+        , 'TP'  : 0
+    }
+    , 'ldf_confusion_matrix' : {
         'TN'    : 0
         , 'FP'  : 0
         , 'FN'  : 0
@@ -288,18 +294,29 @@ def TrackConfusionMatrixSums(sTestType, sPredictionType, sPrefix, dVariables):
     # store the confusion matrix counts (unfortunately this makes the code dependant on numerical target values)
     if int(float(sTestType)) > 0:
         if sTestType == sPredictionType:
-            variables_dict[sPrefix + 'classification'] = 'Correct'
-            variables_dict[sPrefix + 'confusion_matrix']['TP'] += 1
+            variables_dict[sPrefix + '_classification'] = 'Correct'
+            variables_dict[sPrefix + '_confusion_matrix']['TP'] += 1
         else:
-            variables_dict[sPrefix + 'classification'] = 'Incorrect'
-            variables_dict[sPrefix + 'confusion_matrix']['FP'] += 1
+            variables_dict[sPrefix + '_classification'] = 'Incorrect'
+            variables_dict[sPrefix + '_confusion_matrix']['FP'] += 1
     else:
         if sTestType == sPredictionType:
-            variables_dict[sPrefix + 'classification'] = 'Correct'
-            variables_dict[sPrefix + 'confusion_matrix']['TN'] += 1
+            variables_dict[sPrefix + '_classification'] = 'Correct'
+            variables_dict[sPrefix + '_confusion_matrix']['TN'] += 1
         else:
-            variables_dict[sPrefix + 'classification'] = 'Incorrect'
-            variables_dict[sPrefix + 'confusion_matrix']['FN'] += 1
+            variables_dict[sPrefix + '_classification'] = 'Incorrect'
+            variables_dict[sPrefix + '_confusion_matrix']['FN'] += 1
+
+def PrintConfusionMatrix(sPrefix):
+    print(f"{sPrefix} - Confusion Matrix:\n\tTP:{variables_dict[sPrefix + '_confusion_matrix']['TP']} | FN:{variables_dict[sPrefix + '_confusion_matrix']['FN']}\n\tFP:{variables_dict[sPrefix + '_confusion_matrix']['FP']} | TN:{variables_dict[sPrefix + '_confusion_matrix']['TN']}")
+    accuracy = round((variables_dict[sPrefix + '_confusion_matrix']['TP'] + variables_dict[sPrefix + '_confusion_matrix']['TN']) / (variables_dict[sPrefix + '_confusion_matrix']['TP'] + variables_dict[sPrefix + '_confusion_matrix']['TN'] + variables_dict[sPrefix + '_confusion_matrix']['FP'] + variables_dict[sPrefix + '_confusion_matrix']['FN']),2)
+    error_rate = round((1-accuracy),2)
+    print(f"Accuracy   :{accuracy}")
+    print(f"Error Rate :{error_rate}")
+    print(f"Precision  :{round(variables_dict[sPrefix + '_confusion_matrix']['TP'] / (variables_dict[sPrefix + '_confusion_matrix']['TP'] + variables_dict[sPrefix + '_confusion_matrix']['FP']),2)}")
+    print(f"Specificity:{round(variables_dict[sPrefix + '_confusion_matrix']['TN'] / (variables_dict[sPrefix + '_confusion_matrix']['TN'] + variables_dict[sPrefix + '_confusion_matrix']['FN']),2)}")
+    print(f"FPR        :{round(variables_dict[sPrefix + '_confusion_matrix']['FP'] / (variables_dict[sPrefix + '_confusion_matrix']['TN'] + variables_dict[sPrefix + '_confusion_matrix']['FN']),2)}")
+
 
 # Load the training data
 training_dict = {'type' : 'training'}
@@ -388,22 +405,25 @@ for i in range(1, len(testing_dict) - 1):
             print(f"\t{key}_g(x): {round(variables_dict[key]['ldf_g'], 2)} = (2 * {round(variables_dict[key]['ldf_dot_mean'], 2)}) - {round(variables_dict[key]['ldf_mean_square'], 2)}")
 
     # store the confusion matrix counts (unfortunately this makes the code dependant on numerical target values)
-    if int(float(testing_dict[i][variables_dict['target_col_index_test']])) > 0:
-        if testing_dict[i][variables_dict['target_col_index_test']] == variables_dict['majority_type']:
-#        if testing_dict[i][variables_dict['target_col_index_test']] == variables_dict['ldf_best_target']:
-            variables_dict['classification'] = 'Correct'
-            variables_dict['confusion_matrix']['TP'] += 1
-        else:
-            variables_dict['classification'] = 'Incorrect'
-            variables_dict['confusion_matrix']['FP'] += 1
-    else:
-        if testing_dict[i][variables_dict['target_col_index_test']] == variables_dict['majority_type']:
-#        if testing_dict[i][variables_dict['target_col_index_test']] == variables_dict['ldf_best_target']:
-            variables_dict['classification'] = 'Correct'
-            variables_dict['confusion_matrix']['TN'] += 1
-        else:
-            variables_dict['classification'] = 'Incorrect'
-            variables_dict['confusion_matrix']['FN'] += 1
+    TrackConfusionMatrixSums(testing_dict[i][variables_dict['target_col_index_test']], variables_dict['majority_type'], 'knn', variables_dict)
+    TrackConfusionMatrixSums(testing_dict[i][variables_dict['target_col_index_test']], variables_dict['ldf_best_target'], 'ldf', variables_dict)
+    
+#     if int(float(testing_dict[i][variables_dict['target_col_index_test']])) > 0:
+#         if testing_dict[i][variables_dict['target_col_index_test']] == variables_dict['majority_type']:
+# #        if testing_dict[i][variables_dict['target_col_index_test']] == variables_dict['ldf_best_target']:
+#             variables_dict['classification'] = 'Correct'
+#             variables_dict['confusion_matrix']['TP'] += 1
+#         else:
+#             variables_dict['classification'] = 'Incorrect'
+#             variables_dict['confusion_matrix']['FP'] += 1
+#     else:
+#         if testing_dict[i][variables_dict['target_col_index_test']] == variables_dict['majority_type']:
+# #        if testing_dict[i][variables_dict['target_col_index_test']] == variables_dict['ldf_best_target']:
+#             variables_dict['classification'] = 'Correct'
+#             variables_dict['confusion_matrix']['TN'] += 1
+#         else:
+#             variables_dict['classification'] = 'Incorrect'
+#             variables_dict['confusion_matrix']['FN'] += 1
 
     if args.verbosity > 0:
         print(f"{i+1} - Test type {testing_dict[i][variables_dict['target_col_index_test']]} & LDF:{variables_dict['ldf_best_target']} & Most neighbors {variables_dict['majority_type']}: {variables_dict['classification']}")
@@ -414,14 +434,17 @@ for i in range(1, len(testing_dict) - 1):
     for i in range(1, args.kneighbors + 1):
         neighbors_dict[i] = {'index' : -1, 'distance' : 1000, 'type' : ''}
 
-print(f"Confusion Matrix:\n\tTP:{variables_dict['confusion_matrix']['TP']} | FN:{variables_dict['confusion_matrix']['FN']}\n\tFP:{variables_dict['confusion_matrix']['FP']} | TN:{variables_dict['confusion_matrix']['TN']}")
-accuracy = round((variables_dict['confusion_matrix']['TP'] + variables_dict['confusion_matrix']['TN']) / (variables_dict['confusion_matrix']['TP'] + variables_dict['confusion_matrix']['TN'] + variables_dict['confusion_matrix']['FP'] + variables_dict['confusion_matrix']['FN']),2)
-error_rate = round((1-accuracy),2)
-print(f"Accuracy   :{accuracy}")
-print(f"Error Rate :{error_rate}")
-print(f"Precision  :{round(variables_dict['confusion_matrix']['TP'] / (variables_dict['confusion_matrix']['TP'] + variables_dict['confusion_matrix']['FP']),2)}")
-print(f"Specificity:{round(variables_dict['confusion_matrix']['TN'] / (variables_dict['confusion_matrix']['TN'] + variables_dict['confusion_matrix']['FN']),2)}")
-print(f"FPR        :{round(variables_dict['confusion_matrix']['FP'] / (variables_dict['confusion_matrix']['TN'] + variables_dict['confusion_matrix']['FN']),2)}")
+PrintConfusionMatrix('knn')
+PrintConfusionMatrix('ldf')
+
+# print(f"Confusion Matrix:\n\tTP:{variables_dict['confusion_matrix']['TP']} | FN:{variables_dict['confusion_matrix']['FN']}\n\tFP:{variables_dict['confusion_matrix']['FP']} | TN:{variables_dict['confusion_matrix']['TN']}")
+# accuracy = round((variables_dict['confusion_matrix']['TP'] + variables_dict['confusion_matrix']['TN']) / (variables_dict['confusion_matrix']['TP'] + variables_dict['confusion_matrix']['TN'] + variables_dict['confusion_matrix']['FP'] + variables_dict['confusion_matrix']['FN']),2)
+# error_rate = round((1-accuracy),2)
+# print(f"Accuracy   :{accuracy}")
+# print(f"Error Rate :{error_rate}")
+# print(f"Precision  :{round(variables_dict['confusion_matrix']['TP'] / (variables_dict['confusion_matrix']['TP'] + variables_dict['confusion_matrix']['FP']),2)}")
+# print(f"Specificity:{round(variables_dict['confusion_matrix']['TN'] / (variables_dict['confusion_matrix']['TN'] + variables_dict['confusion_matrix']['FN']),2)}")
+# print(f"FPR        :{round(variables_dict['confusion_matrix']['FP'] / (variables_dict['confusion_matrix']['TN'] + variables_dict['confusion_matrix']['FN']),2)}")
 #print(f"Accuracy:{(variables_dict['confusion_matrix']['TP'] + variables_dict['confusion_matrix']['TN']) / (variables_dict['confusion_matrix']['TP'] + variables_dict['confusion_matrix']['TN'] + variables_dict['confusion_matrix']['FP'] + variables_dict['confusion_matrix']['FN'])}")
 # for key, value in variables_dict['confusion_matrix'].items():
 #     print(f"{key}:{value}")
