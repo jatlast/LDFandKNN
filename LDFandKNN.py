@@ -62,8 +62,6 @@ def GetInnerProductOfTwoVectors(vOne, vTwo):
     else:
         for i in range(0, v_one_len):
             product += float(vOne[i]) * float(vTwo[i])
-            if args.verbosity > 1:
-                print(f"vOne[{i}]:{vOne[i]} * vTwo[{i}]:{vTwo[i]}")
     return product
 
 # variables that are useful to pass around
@@ -91,7 +89,7 @@ variables_dict = {
     , 'ldf_diff_min' : 1000
     , 'ldf_diff_max' : 0
     , 'classification' : 'UNK'
-    , 'ignore_columns' : ['cigs', 'years', 'num']
+    , 'ignore_columns' : ['cigs', 'years']
     , 'knn_confusion_matrix' : {
         'TN'    : 0
         , 'FP'  : 0
@@ -111,6 +109,13 @@ variables_dict = {
         , 'TP'  : 0
     }
 }
+
+# specific to UCI's Heart Disease data set which has two target columns: num (0-4) & target (0 or 1)
+# This allows the code to ignore the unmentioned column dynamically
+if args.targetname == 'num':
+    variables_dict['ignore_columns'].append('target')
+elif args.targetname == 'target':
+    variables_dict['ignore_columns'].append('num')
 
 # Read the provided data files
 # Note: These files are not in a generic (',' or '\t') delimited format -- they require parsing
@@ -287,7 +292,7 @@ def AddKNNMajorityTypeToVarDict(dNeighbors, dVariables):
     else:
         dVariables['knn_confidence'] = 1
     
-    if args.verbosity > 1:
+    if args.verbosity > 2:
         print(f"majority:{dVariables['knn_majority_type']}{type_count_dict}")
         # for key, value in type_count_dict.items():
         #     print(f"{key}:{value}")
@@ -331,7 +336,12 @@ def AddTargetTypeMeansToVarDict(dTrainingData, dVariables):
             if args.verbosity > 2:
                 print(f"col:{col}:\t{col_sums_dic[key][col]} / {row_count_dic[key]}")
             # append the colum mean to the target type mean vector
-            dVariables[key]['ldf_mean'].append(col_sums_dic[key][col] / row_count_dic[key]) 
+            if row_count_dic[key] > 0:
+                dVariables[key]['ldf_mean'].append(col_sums_dic[key][col] / row_count_dic[key])
+            else:
+                print(f"Warning: LDF mean = 0 for target:{key}")
+                print(f"col:{col}:\t{col_sums_dic[key][col]} / {row_count_dic[key]}")
+                dVariables[key]['ldf_mean'].append(0)
 
 # get the largest PluginLDF value of g(x)
 def AddCalculatesOfPluginLDFToVarDic(vTestData, dVariables):
@@ -547,13 +557,13 @@ for i in range(1, len(testing_dict) - 1):
     if variables_dict['knn_confidence'] > variables_dict['ldf_confidence']:
         variables_dict['com_best_target'] = variables_dict['knn_majority_type']
         # debugging infoi
-        if args.verbosity > 0:
+        if args.verbosity > 1:
             if variables_dict['ldf_best_target'] != variables_dict['knn_majority_type']:
                 print(f"KNN:{variables_dict['knn_majority_type']}>({testing_dict[i][variables_dict['target_col_index_test']]}:confidence) KNN:{variables_dict['knn_majority_type']}:{round(variables_dict['knn_confidence'],2)} | LDF:{variables_dict['ldf_best_target']}:{round(variables_dict['ldf_confidence'],2)}")
     else:
         variables_dict['com_best_target'] = variables_dict['ldf_best_target']
         # debugging infoi
-        if args.verbosity > 0:
+        if args.verbosity > 1:
             if variables_dict['ldf_best_target'] != variables_dict['knn_majority_type']:
                 print(f"LDF:{variables_dict['com_best_target']}>({testing_dict[i][variables_dict['target_col_index_test']]}:confidence) KNN:{variables_dict['knn_majority_type']}:{round(variables_dict['knn_confidence'],2)} | LDF:{variables_dict['ldf_best_target']}:{round(variables_dict['ldf_confidence'],2)}")
     TrackConfusionMatrixSums(testing_dict[i][variables_dict['target_col_index_test']], variables_dict['com_best_target'], 'com', variables_dict)
