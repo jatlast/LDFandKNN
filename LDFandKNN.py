@@ -79,7 +79,17 @@ variables_dict = {
     , 'training_col_count' : -1
     , 'testing_col_count' : -1
     , 'plot_title' : 'Default Title'
-    , 'majority_type' : 0
+    , 'knn_majority_type' : 0
+    , 'test_runs_count' : 0
+    , 'com_knn_ldf_right' : 0
+    , 'com_knn_right_ldf_wrong' : 0
+    , 'com_ldf_right_knn_wrong' : 0
+    , 'com_ldf_wrong_knn_right' : 0
+    , 'com_knn_wrong_ldf_right' : 0
+    , 'com_knn_ldf_wrong' : 0
+    , 'ldf_confidence_zero' : -1
+    , 'ldf_diff_min' : 1000
+    , 'ldf_diff_max' : 0
     , 'classification' : 'UNK'
     , 'ignore_columns' : ['cigs', 'years', 'num']
     , 'knn_confusion_matrix' : {
@@ -89,6 +99,12 @@ variables_dict = {
         , 'TP'  : 0
     }
     , 'ldf_confusion_matrix' : {
+        'TN'    : 0
+        , 'FP'  : 0
+        , 'FN'  : 0
+        , 'TP'  : 0
+    }
+    , 'com_confusion_matrix' : {
         'TN'    : 0
         , 'FP'  : 0
         , 'FN'  : 0
@@ -221,10 +237,15 @@ def PopulateNearestNeighborsDicOfIndexes(dNeighbors, dTrainingData, vTestData, d
             print(f"min{i}:({distances[i]}) \t& neighbors:({dNeighbors[i+1]['distance']})")
 
 # Return the "type" value of the majority of nearest neighbors
-def GetNearestNeighborMajorityType(dNeighbors, dVariables):
+def AddKNNMajorityTypeToVarDict(dNeighbors, dVariables):
     type_count_dict = {}
-    the_majority_type = -1
-    current_max_count = 0
+    dVariables['knn_majority_type'] = -1
+    dVariables['knn_majority_count'] = 0
+    dVariables['knn_secondary_type'] = -1
+    dVariables['knn_secondary_count'] = 0
+    dVariables['knn_confidence'] = -1
+    dVariables['classification'] = 'UNK'
+    dVariables['knn_majority_count'] = 0
     # loop through the target types and zero out the type_count_dict
     for key in dVariables['target_types']:
         type_count_dict[key] = 0
@@ -238,16 +259,38 @@ def GetNearestNeighborMajorityType(dNeighbors, dVariables):
     # loop through the type_count_dict to find the largest type count value
     for key in type_count_dict:
 #        print(f"key3:{key}:{type_count_dict[key]}")
-        if current_max_count < type_count_dict[key]:
-            current_max_count = type_count_dict[key]
-            the_majority_type = key
 
+        # store the largest and second largest g(x) for later comparison to determine confidence
+        # current better than second best
+        if dVariables['knn_secondary_count'] < type_count_dict[key]:
+            # current better than best
+            if dVariables['knn_majority_count'] < type_count_dict[key]:
+                # set best to current
+                dVariables['knn_majority_count'] = type_count_dict[key]
+                dVariables['knn_majority_type'] = key
+            else:
+                # set second best to current best
+                dVariables['knn_secondary_count'] = type_count_dict[key]
+                dVariables['ldf_second_best_target'] = key
+        # current better than best
+        elif dVariables['knn_majority_count'] < type_count_dict[key]:
+            # set second best to previous best
+            dVariables['knn_secondary_count'] = dVariables['knn_majority_count']
+            dVariables['ldf_second_best_target'] = dVariables['knn_majority_type']
+            # set best to current
+            dVariables['knn_majority_count'] = type_count_dict[key]
+            dVariables['knn_majority_type'] = key
+
+    # only calculate confidence if majority != secondary
+    if dVariables['knn_majority_count'] != dVariables['knn_secondary_count']:
+        dVariables['knn_confidence'] = dVariables['knn_majority_count'] / (dVariables['knn_majority_count'] + dVariables['knn_secondary_count'])
+    else:
+        dVariables['knn_confidence'] = 1
+    
     if args.verbosity > 1:
-        print(f"majority:{the_majority_type}{type_count_dict}")
+        print(f"majority:{dVariables['knn_majority_type']}{type_count_dict}")
         # for key, value in type_count_dict.items():
         #     print(f"{key}:{value}")
-
-    return the_majority_type
 
 # calculate the class type means from the training data
 # For PluginLDF functionality
@@ -285,40 +328,143 @@ def AddTargetTypeMeansToVarDict(dTrainingData, dVariables):
     for key in dVariables['target_types']:
         for col in col_sums_dic[key]:
             # debug info
-            if args.verbosity > 0:
+            if args.verbosity > 2:
                 print(f"col:{col}:\t{col_sums_dic[key][col]} / {row_count_dic[key]}")
             # append the colum mean to the target type mean vector
             dVariables[key]['ldf_mean'].append(col_sums_dic[key][col] / row_count_dic[key]) 
+
+# get the largest PluginLDF value of g(x)
+def AddCalculatesOfPluginLDFToVarDic(vTestData, dVariables):
+    dVariables['ldf_best_g'] = -1
+    dVariables['ldf_second_best_g'] = -1
+    dVariables['ldf_best_target'] = -1
+    dVariables['ldf_second_best_target'] = -1
+    dVariables['ldf_confidence'] = -1
+    ldf_diff = -1
+    # loop through the target types
+    for key in dVariables['target_types']:
+        # calculate the inner (dot) products of the target type means
+        dVariables[key]['ldf_dot_mean'] = GetInnerProductOfTwoVectors(vTestData, dVariables[key]['ldf_mean'])
+        # calculate g(x)
+        dVariables[key]['ldf_g'] = (2 * dVariables[key]['ldf_dot_mean']) - dVariables[key]['ldf_mean_square']
+
+        # store the largest and second largest g(x) for later comparison to determine confidence
+        # current better than second best
+        if dVariables['ldf_second_best_g'] < dVariables[key]['ldf_g']:
+            # current better than best
+            if dVariables['ldf_best_g'] < dVariables[key]['ldf_g']:
+                # set best to current
+                dVariables['ldf_best_g'] = dVariables[key]['ldf_g']
+                dVariables['ldf_best_target'] = key
+            else:
+                # set second best to current best
+                dVariables['ldf_second_best_g'] = dVariables[key]['ldf_g']
+                dVariables['ldf_second_best_target'] = key
+        # current better than best
+        elif dVariables['ldf_best_g'] < dVariables[key]['ldf_g']:
+            # set second best to previous best
+            dVariables['ldf_second_best_g'] = dVariables['ldf_best_g']
+            dVariables['ldf_second_best_target'] = dVariables['ldf_best_target']
+            # set best to current
+            dVariables['ldf_best_g'] = dVariables[key]['ldf_g']
+            dVariables['ldf_best_target'] = key
+
+        # debug info: print the formul used
+        if args.verbosity > 2:
+            print(f"\t{key}_g(x): {round(dVariables[key]['ldf_g'], 2)} = (2 * {round(dVariables[key]['ldf_dot_mean'], 2)}) - {round(dVariables[key]['ldf_mean_square'], 2)}")
+
+    # get the difference between best and second best
+    ldf_diff = dVariables['ldf_best_g'] - dVariables['ldf_second_best_g']
+    # set the max
+    if dVariables['ldf_diff_max'] < ldf_diff:
+        dVariables['ldf_diff_max'] = ldf_diff
+    
+    # set the min
+    if dVariables['ldf_diff_min'] > ldf_diff:
+        dVariables['ldf_diff_min'] = ldf_diff
+    
+    # use min-max to calculate confidence if min & max have been initialized
+    if dVariables['ldf_diff_max'] != dVariables['ldf_diff_min']:
+        dVariables['ldf_confidence'] = ((ldf_diff - dVariables['ldf_diff_min']) / (dVariables['ldf_diff_max'] - dVariables['ldf_diff_min']))
+    else:
+        dVariables['ldf_confidence'] = ldf_diff
+
+    # sum all LDF confidenc <= 0
+    if dVariables['ldf_confidence'] <= 0:
+        dVariables['ldf_confidence_zero'] += 1
+        if args.verbosity > 2:
+            print(f"ldf diff:{dVariables['ldf_best_g']} - {dVariables['ldf_second_best_g']}")
 
 def TrackConfusionMatrixSums(sTestType, sPredictionType, sPrefix, dVariables):
     # store the confusion matrix counts (unfortunately this makes the code dependant on numerical target values)
     if int(float(sTestType)) > 0:
         if sTestType == sPredictionType:
-            variables_dict[sPrefix + '_classification'] = 'Correct'
-            variables_dict[sPrefix + '_confusion_matrix']['TP'] += 1
+            dVariables[sPrefix + '_classification'] = 'Correct'
+            dVariables[sPrefix + '_confusion_matrix']['TP'] += 1
         else:
-            variables_dict[sPrefix + '_classification'] = 'Incorrect'
-            variables_dict[sPrefix + '_confusion_matrix']['FP'] += 1
+            dVariables[sPrefix + '_classification'] = 'Incorrect'
+            dVariables[sPrefix + '_confusion_matrix']['FP'] += 1
     else:
         if sTestType == sPredictionType:
-            variables_dict[sPrefix + '_classification'] = 'Correct'
-            variables_dict[sPrefix + '_confusion_matrix']['TN'] += 1
+            dVariables[sPrefix + '_classification'] = 'Correct'
+            dVariables[sPrefix + '_confusion_matrix']['TN'] += 1
         else:
-            variables_dict[sPrefix + '_classification'] = 'Incorrect'
-            variables_dict[sPrefix + '_confusion_matrix']['FN'] += 1
+            dVariables[sPrefix + '_classification'] = 'Incorrect'
+            dVariables[sPrefix + '_confusion_matrix']['FN'] += 1
 
-def PrintConfusionMatrix(sPrefix):
-    print(f"{sPrefix} - Confusion Matrix:\n\tTP:{variables_dict[sPrefix + '_confusion_matrix']['TP']} | FN:{variables_dict[sPrefix + '_confusion_matrix']['FN']}\n\tFP:{variables_dict[sPrefix + '_confusion_matrix']['FP']} | TN:{variables_dict[sPrefix + '_confusion_matrix']['TN']}")
-    variables_dict[sPrefix + '_accuracy'] = round((variables_dict[sPrefix + '_confusion_matrix']['TP'] + variables_dict[sPrefix + '_confusion_matrix']['TN']) / (variables_dict[sPrefix + '_confusion_matrix']['TP'] + variables_dict[sPrefix + '_confusion_matrix']['TN'] + variables_dict[sPrefix + '_confusion_matrix']['FP'] + variables_dict[sPrefix + '_confusion_matrix']['FN']),2)
-    variables_dict[sPrefix + '_error_rate'] = round((1 - variables_dict[sPrefix + '_accuracy']),2)
-    variables_dict[sPrefix + '_precision'] = round(variables_dict[sPrefix + '_confusion_matrix']['TP'] / (variables_dict[sPrefix + '_confusion_matrix']['TP'] + variables_dict[sPrefix + '_confusion_matrix']['FP']),2)
-    variables_dict[sPrefix + '_specificity'] = round(variables_dict[sPrefix + '_confusion_matrix']['TN'] / (variables_dict[sPrefix + '_confusion_matrix']['TN'] + variables_dict[sPrefix + '_confusion_matrix']['FN']),2)
-    variables_dict[sPrefix + '_FPR'] = round(variables_dict[sPrefix + '_confusion_matrix']['FP'] / (variables_dict[sPrefix + '_confusion_matrix']['TN'] + variables_dict[sPrefix + '_confusion_matrix']['FN']),2)
-    print(f"Accuracy   :{variables_dict[sPrefix + '_accuracy']}")
-    print(f"Error Rate :{variables_dict[sPrefix + '_error_rate']}")
-    print(f"Precision  :{variables_dict[sPrefix + '_precision']}")
-    print(f"Specificity:{variables_dict[sPrefix + '_specificity']}")
-    print(f"FPR        :{variables_dict[sPrefix + '_FPR']}")
+def PrintConfusionMatrix(sPrefix, dVariables):
+    print(f"\n{sPrefix} - Confusion Matrix:\n\tTP:{dVariables[sPrefix + '_confusion_matrix']['TP']} | FN:{dVariables[sPrefix + '_confusion_matrix']['FN']}\n\tFP:{dVariables[sPrefix + '_confusion_matrix']['FP']} | TN:{dVariables[sPrefix + '_confusion_matrix']['TN']}")
+    dVariables[sPrefix + '_accuracy'] = round((dVariables[sPrefix + '_confusion_matrix']['TP'] + dVariables[sPrefix + '_confusion_matrix']['TN']) / (dVariables[sPrefix + '_confusion_matrix']['TP'] + dVariables[sPrefix + '_confusion_matrix']['TN'] + dVariables[sPrefix + '_confusion_matrix']['FP'] + dVariables[sPrefix + '_confusion_matrix']['FN']),2)
+    dVariables[sPrefix + '_error_rate'] = round((1 - dVariables[sPrefix + '_accuracy']),2)
+    dVariables[sPrefix + '_precision'] = round(dVariables[sPrefix + '_confusion_matrix']['TP'] / (dVariables[sPrefix + '_confusion_matrix']['TP'] + dVariables[sPrefix + '_confusion_matrix']['FP']),2)
+    dVariables[sPrefix + '_specificity'] = round(dVariables[sPrefix + '_confusion_matrix']['TN'] / (dVariables[sPrefix + '_confusion_matrix']['TN'] + dVariables[sPrefix + '_confusion_matrix']['FN']),2)
+    dVariables[sPrefix + '_FPR'] = round(dVariables[sPrefix + '_confusion_matrix']['FP'] / (dVariables[sPrefix + '_confusion_matrix']['TN'] + dVariables[sPrefix + '_confusion_matrix']['FN']),2)
+    print(f"Accuracy   :{dVariables[sPrefix + '_accuracy']}")
+    print(f"Error Rate :{dVariables[sPrefix + '_error_rate']}")
+    print(f"Precision  :{dVariables[sPrefix + '_precision']}")
+    print(f"Specificity:{dVariables[sPrefix + '_specificity']}")
+    print(f"FPR        :{dVariables[sPrefix + '_FPR']}")
+
+def AddRunningPredictionStatsToVarDict(sTestType, dVariables):
+    dVariables['test_runs_count'] += 1
+    # COM-bination right
+    if sTestType == dVariables['com_best_target']:
+        # KNN right
+        if sTestType == dVariables['knn_majority_type']:
+            # LDF right
+            if sTestType == dVariables['ldf_best_target']:
+                dVariables['com_knn_ldf_right'] += 1
+            # LDF wrong
+            else:
+                dVariables['com_knn_right_ldf_wrong'] += 1
+        # KNN wrong
+        else:
+            # LDF right
+            if sTestType == dVariables['ldf_best_target']:
+                dVariables['com_ldf_right_knn_wrong'] += 1
+            # LDF wrong
+            else:
+                # this should never happen!
+                print("Warning: COM-bination can never be connrect when both KNN & LDF are incorrect.")
+    # COM-bination wrong
+    else:
+        # KNN right
+        if sTestType == dVariables['knn_majority_type']:
+            # LDF right
+            if sTestType == dVariables['ldf_best_target']:
+                # this should never happen!
+                print("Warning: COM-bination can never be inconnrect when both KNN & LDF are correct.")
+            # LDF wrong
+            else:
+                dVariables['com_ldf_wrong_knn_right'] += 1
+        # KNN wrong
+        else:
+            # LDF right
+            if sTestType == dVariables['ldf_best_target']:
+                dVariables['com_knn_wrong_ldf_right'] += 1
+            # LDF wrong
+            else:
+                dVariables['com_knn_ldf_wrong'] += 1
 
 # Load the training data
 training_dict = {'type' : 'training'}
@@ -386,38 +532,52 @@ for i in range(1, len(testing_dict) - 1):
     PopulateNearestNeighborsDicOfIndexes(neighbors_dict, training_dict, test_vec, variables_dict)
 #    print(f"neighbors:{neighbors_dict}")
 
-    # get the k-nearest neighbors' majority type
-    variables_dict['majority_type'] = GetNearestNeighborMajorityType(neighbors_dict, variables_dict)
+    # add the k-nearest neighbors' "knn_majority_type" to the variables_dict
+    AddKNNMajorityTypeToVarDict(neighbors_dict, variables_dict)
 
-    # get the largest PluginLDF value of g(x)
-    variables_dict['ldf_best_g'] = -1
-    variables_dict['ldf_best_target'] = -1
-    # loop through the target types
-    for key in variables_dict['target_types']:
-        # calculate the inner (dot) products of the target type means
-        variables_dict[key]['ldf_dot_mean'] = GetInnerProductOfTwoVectors(test_vec, variables_dict[key]['ldf_mean'])
-        # calculate g(x)
-        variables_dict[key]['ldf_g'] = (2 * variables_dict[key]['ldf_dot_mean']) - variables_dict[key]['ldf_mean_square']
-        # store the largest g(x)
-        if variables_dict['ldf_best_g'] < variables_dict[key]['ldf_g']:
-            variables_dict['ldf_best_g'] = variables_dict[key]['ldf_g']
-            variables_dict['ldf_best_target'] = key
-        # debug info: print the formul used
-        if args.verbosity > 1:
-            print(f"\t{key}_g(x): {round(variables_dict[key]['ldf_g'], 2)} = (2 * {round(variables_dict[key]['ldf_dot_mean'], 2)}) - {round(variables_dict[key]['ldf_mean_square'], 2)}")
+    # add the calculations fo the PluginLDF values to the variables dict inclulding g(x)    
+    AddCalculatesOfPluginLDFToVarDic(test_vec, variables_dict)
 
-    # store the confusion matrix counts (unfortunately this makes the code dependant on numerical target values)
-    TrackConfusionMatrixSums(testing_dict[i][variables_dict['target_col_index_test']], variables_dict['majority_type'], 'knn', variables_dict)
+    # ----- Store the Confusion Matrix running counts -----
+    # store the confusion matrix counts for KNN
+    TrackConfusionMatrixSums(testing_dict[i][variables_dict['target_col_index_test']], variables_dict['knn_majority_type'], 'knn', variables_dict)
+    # store the confusion matrix counts for KNN
     TrackConfusionMatrixSums(testing_dict[i][variables_dict['target_col_index_test']], variables_dict['ldf_best_target'], 'ldf', variables_dict)
-    
-    if args.verbosity > 0:
-        print(f"{i+1} - Test type {testing_dict[i][variables_dict['target_col_index_test']]} & LDF:{variables_dict['ldf_best_target']} & Most neighbors {variables_dict['majority_type']}: {variables_dict['classification']}")
+    # store the confusion matrix counts for most confident prediction
+    if variables_dict['knn_confidence'] > variables_dict['ldf_confidence']:
+        variables_dict['com_best_target'] = variables_dict['knn_majority_type']
+        # debugging infoi
+        if args.verbosity > 0:
+            if variables_dict['ldf_best_target'] != variables_dict['knn_majority_type']:
+                print(f"KNN:{variables_dict['knn_majority_type']}>({testing_dict[i][variables_dict['target_col_index_test']]}:confidence) KNN:{variables_dict['knn_majority_type']}:{round(variables_dict['knn_confidence'],2)} | LDF:{variables_dict['ldf_best_target']}:{round(variables_dict['ldf_confidence'],2)}")
+    else:
+        variables_dict['com_best_target'] = variables_dict['ldf_best_target']
+        # debugging infoi
+        if args.verbosity > 0:
+            if variables_dict['ldf_best_target'] != variables_dict['knn_majority_type']:
+                print(f"LDF:{variables_dict['com_best_target']}>({testing_dict[i][variables_dict['target_col_index_test']]}:confidence) KNN:{variables_dict['knn_majority_type']}:{round(variables_dict['knn_confidence'],2)} | LDF:{variables_dict['ldf_best_target']}:{round(variables_dict['ldf_confidence'],2)}")
+    TrackConfusionMatrixSums(testing_dict[i][variables_dict['target_col_index_test']], variables_dict['com_best_target'], 'com', variables_dict)
+    # -----------------------------------------------------
 
-    # reset variables
-    variables_dict['majority_type'] = 0
-    variables_dict['classification'] = 'UNK'
+    # add the running totals of knn & ldf's predictions
+    AddRunningPredictionStatsToVarDict(testing_dict[i][variables_dict['target_col_index_test']], variables_dict)
+
+    # reset kneighbors_dict
     for i in range(1, args.kneighbors + 1):
         neighbors_dict[i] = {'index' : -1, 'distance' : 1000, 'type' : ''}
 
-PrintConfusionMatrix('knn')
-PrintConfusionMatrix('ldf')
+PrintConfusionMatrix('knn', variables_dict)
+PrintConfusionMatrix('ldf', variables_dict)
+PrintConfusionMatrix('com', variables_dict)
+
+print(f"\nall:      right |                  {variables_dict['com_knn_ldf_right']} \t| {round((variables_dict['com_knn_ldf_right']/variables_dict['test_runs_count']),2)}%")
+print(f"com, knn: right | ldf:      wrong: {variables_dict['com_knn_right_ldf_wrong']} \t| {round((variables_dict['com_knn_right_ldf_wrong']/variables_dict['test_runs_count']),2)}%")
+print(f"com, ldf: right | knn:      wrong: {variables_dict['com_ldf_right_knn_wrong']} \t| {round((variables_dict['com_ldf_right_knn_wrong']/variables_dict['test_runs_count']),2)}%")
+print(f"knn:      right | com, ldf: wrong: {variables_dict['com_ldf_wrong_knn_right']} \t| {round((variables_dict['com_ldf_wrong_knn_right']/variables_dict['test_runs_count']),2)}%")
+print(f"ldf:      right | com, knn: wrong: {variables_dict['com_knn_wrong_ldf_right']} \t| {round((variables_dict['com_knn_wrong_ldf_right']/variables_dict['test_runs_count']),2)}%")
+print(f"                | all:      wrong: {variables_dict['com_knn_ldf_wrong']} \t| {round((variables_dict['com_knn_ldf_wrong']/variables_dict['test_runs_count']),2)}%")
+
+print(f"\nldf: min:{round(variables_dict['ldf_diff_min'],2)} | max:{round(variables_dict['ldf_diff_max'],2)}")
+if variables_dict['ldf_confidence_zero'] > 0:
+    print(f"ldf confidence <= 0: {variables_dict['ldf_confidence_zero']} \t| {round((variables_dict['ldf_confidence_zero']/variables_dict['test_runs_count']),2)}%")
+
