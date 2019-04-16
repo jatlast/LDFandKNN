@@ -6,7 +6,7 @@
 #           K-Nearest Neighbor (KNN) & Plugin Linear Discriminant Function (LDF)
 #
 # Note: this code is available on GitHub 
-#   https://github.com/jatlast/kNearestNeighbor.git
+#   https://github.com/jatlast/LDFandKNN.git
 #
 ########################################################################
 
@@ -591,6 +591,7 @@ for i in range(1, len(testing_dict) - 1):
         if args.verbosity > 1:
             if variables_dict['ldf_best_target'] != variables_dict['knn_majority_type']:
                 print(f"LDF:{variables_dict['com_best_target']}>({testing_dict[i][variables_dict['target_col_index_test']]}:confidence) KNN:{variables_dict['knn_majority_type']}:{round(variables_dict['knn_confidence'],2)} | LDF:{variables_dict['ldf_best_target']}:{round(variables_dict['ldf_confidence'],2)}")
+
     
     # track Combined confusion matrix running totals
     TrackConfusionMatrixSums(testing_dict[i][variables_dict['target_col_index_test']], variables_dict['com_best_target'], 'com', variables_dict)
