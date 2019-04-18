@@ -433,22 +433,35 @@ def TrackConfusionMatrixSums(sTestType, sPredictionType, sPrefix, dVariables):
 def PrintConfusionMatrix(sPrefix, dVariables):
     # print the confusion matrix
     print(f"\n{sPrefix} - Confusion Matrix:\n\tTP:{dVariables[sPrefix + '_confusion_matrix']['TP']} | FN:{dVariables[sPrefix + '_confusion_matrix']['FN']}\n\tFP:{dVariables[sPrefix + '_confusion_matrix']['FP']} | TN:{dVariables[sPrefix + '_confusion_matrix']['TN']}")
-    # calculate accuracy
+    # Classifier Accuracy, or recognition rate: percentage of test set tuples that are correctly classified
+    #   calculate accuracy = ( (TP + TN) / All )
     dVariables[sPrefix + '_accuracy'] = round((dVariables[sPrefix + '_confusion_matrix']['TP'] + dVariables[sPrefix + '_confusion_matrix']['TN']) / (dVariables[sPrefix + '_confusion_matrix']['TP'] + dVariables[sPrefix + '_confusion_matrix']['TN'] + dVariables[sPrefix + '_confusion_matrix']['FP'] + dVariables[sPrefix + '_confusion_matrix']['FN']),2)
-    # calculate error rate
+    # calculate error rate = (1 - accuracy)
     dVariables[sPrefix + '_error_rate'] = round((1 - dVariables[sPrefix + '_accuracy']),2)
-    # calculate precision
+    # Sensitivity, or Recall, or True Positive recognition rate (TPR)
+    #   Recall: completeness – what % of positive tuples the classifier label positive
+    #   Note: 1.0 = Perfect score
+    #       calculate sensitivity|recall|TPR = ( TP / (TP + FN) )
+    dVariables[sPrefix + '_sensitivity'] = round(dVariables[sPrefix + '_confusion_matrix']['TP'] / (dVariables[sPrefix + '_confusion_matrix']['TP'] + dVariables[sPrefix + '_confusion_matrix']['FN']),2)
+    # Precision: exactness – what % of tuples labeled positive are positive
+    #   calculate precision = ( TP / (TP + FP) )
     dVariables[sPrefix + '_precision'] = round(dVariables[sPrefix + '_confusion_matrix']['TP'] / (dVariables[sPrefix + '_confusion_matrix']['TP'] + dVariables[sPrefix + '_confusion_matrix']['FP']),2)
-    # calculate specificity
-    dVariables[sPrefix + '_specificity'] = round(dVariables[sPrefix + '_confusion_matrix']['TN'] / (dVariables[sPrefix + '_confusion_matrix']['TN'] + dVariables[sPrefix + '_confusion_matrix']['FN']),2)
-    # calculate false positive rate (FPR)
-    dVariables[sPrefix + '_FPR'] = round(dVariables[sPrefix + '_confusion_matrix']['FP'] / (dVariables[sPrefix + '_confusion_matrix']['TN'] + dVariables[sPrefix + '_confusion_matrix']['FN']),2)
+    # Specificity, or True Negative recognition rate (TNR)
+    #   calculate specificity|TNR = ( TN / (TN + FP) )
+    dVariables[sPrefix + '_specificity'] = round(dVariables[sPrefix + '_confusion_matrix']['TN'] / (dVariables[sPrefix + '_confusion_matrix']['TN'] + dVariables[sPrefix + '_confusion_matrix']['FP']),2)
+    # calculate false positive rate (FPR) = (1 - specificity) or ( FP / (FP + TN) )
+    dVariables[sPrefix + '_FPR'] = round(dVariables[sPrefix + '_confusion_matrix']['FP'] / (dVariables[sPrefix + '_confusion_matrix']['FP'] + dVariables[sPrefix + '_confusion_matrix']['TN']),2)
+    # F measure (F1 or F-score): harmonic mean of precision and recall
+    #   calculate F-score = (2 * precision * recall) / (precision + recall)
+    dVariables[sPrefix + '_fscore'] = round((2 * dVariables[sPrefix + '_precision'] * dVariables[sPrefix + '_sensitivity']) / (dVariables[sPrefix + '_precision'] + dVariables[sPrefix + '_sensitivity']),2)
     # print the values calculated above
     print(f"Accuracy   :{dVariables[sPrefix + '_accuracy']}")
     print(f"Error Rate :{dVariables[sPrefix + '_error_rate']}")
+    print(f"Sensitivity:{dVariables[sPrefix + '_sensitivity']}")
     print(f"Precision  :{dVariables[sPrefix + '_precision']}")
     print(f"Specificity:{dVariables[sPrefix + '_specificity']}")
     print(f"FPR        :{dVariables[sPrefix + '_FPR']}")
+    print(f"F-score    :{dVariables[sPrefix + '_fscore']}")
 
 # keep track of the running totals of which algorithms were correct and/or incorrect
 def AddRunningPredictionStatsToVarDict(sTestType, dVariables):
@@ -539,9 +552,9 @@ if args.verbosity > 1:
         print(f"{key} mean_sq:{variables_dict[key]['ldf_mean_square']} | mean:{variables_dict[key]['ldf_mean']}")
 
 # debugging info
-if args.verbosity > 0:
-    # print the trainging and testing data lengths (subtract 1 for headers and 1 for starting from zero)
-    print(f"train:{len(training_dict)-2} | test:{len(testing_dict)-2}")
+#if args.verbosity > 0:
+# print the train & test shapes (rows: subtract 1 for headers and 1 for starting from zero; cols: subtract 1 for "num" & 1 for "target")
+print(f"train: {len(training_dict)-2} x {len(training_dict[0])-2} | test: {len(testing_dict)-2} x {len(testing_dict[0])-2} | shared: {len(variables_dict['shared_attributes'])-1}")
 
 # debugging info
 if args.verbosity > 2:
