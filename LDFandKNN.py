@@ -1,9 +1,9 @@
 ########################################################################
 # Jason Baumbach
-#   CSC 546 - Project (due: April 06, 2019 @ 5:59 PM)
 #   
 #       Combined Classifier:
-#           K-Nearest Neighbor (KNN) & Plugin Linear Discriminant Function (LDF)
+#           K-Nearest Neighbor (KNN)
+#           Plugin Linear Discriminant Function (LDF)
 #
 # Note: this code is available on GitHub 
 #   https://github.com/jatlast/LDFandKNN.git
@@ -301,8 +301,8 @@ def AddTargetTypeMeansToVarDict(dTrainingData, dVariables):
 
     # zero out the col_sums and row_count dictionaries
     for key in dVariables['target_types']:
-        col_sums_dic[key] = {}
-        row_count_dic[key] = 0
+        col_sums_dic[key] = {} # col_sums_dic[target][col_name] = sums by target
+        row_count_dic[key] = 0 # row_count_dic[target][col_name] = rows by target
         # dynamically create target mean vectors for each target type to the variables dictionary for LDF calculations
         dVariables[key] = {'ldf_mean' : []} # initialized to the empty list
         # loop thought the sared attributes list
